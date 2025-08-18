@@ -123,7 +123,7 @@ st.markdown("""
 <div class="header-container">
     <div class="header-icon">📥</div>
     <div>
-        <h1 style="margin: 0;">Instagram Video Downloader</h1>
+        <h1 style="margin: 0;">Instagram Video Downloader By Yousuf</h1>
         <p style="margin: 0; color: #6c757d;">Download videos from public Instagram posts</p>
     </div>
 </div>
@@ -223,3 +223,4 @@ st.markdown("""
 - Videos are saved in the specified folder
 - Respect Instagram's terms of service
 """)
+
