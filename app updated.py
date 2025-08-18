@@ -1,82 +1,8 @@
-import streamlit as st
 import instaloader
 import os
-import random
 from urllib.parse import urlparse
+import argparse
 import time
-
-# Custom CSS for better styling
-st.markdown("""
-    <style>
-    .main {
-        background-color: #f8f9fa;
-    }
-    .stTextInput input {
-        border-radius: 8px !important;
-        border: 1px solid #ced4da !important;
-    }
-    .stButton button {
-        background-color: #405de6 !important;
-        color: white !important;
-        border-radius: 8px !important;
-        padding: 8px 16px !important;
-        border: none !important;
-        width: 100%;
-    }
-    .stButton button:hover {
-        background-color: #3749aa !important;
-    }
-    .success-box {
-        background-color: #e6f7ee;
-        border-radius: 10px;
-        padding: 15px;
-        margin-top: 20px;
-    }
-    .error-box {
-        background-color: #fde8e8;
-        border-radius: 10px;
-        padding: 15px;
-        margin-top: 20px;
-    }
-    .info-text {
-        color: #6c757d;
-        font-size: 0.9em;
-    }
-    .stats-container {
-        display: flex;
-        justify-content: space-between;
-        margin-top: 15px;
-    }
-    .stat-box {
-        background-color: white;
-        border-radius: 8px;
-        padding: 10px;
-        text-align: center;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-        flex: 1;
-        margin: 0 5px;
-    }
-    .header-container {
-        display: flex;
-        align-items: center;
-        margin-bottom: 20px;
-    }
-    .header-icon {
-        font-size: 2.5rem;
-        margin-right: 15px;
-    }
-    </style>
-    """, unsafe_allow_html=True)
-
-# List of user agents to rotate
-USER_AGENTS = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:89.0) Gecko/20100101 Firefox/89.0",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.1 Safari/605.1.15",
-    "Mozilla/5.0 (iPhone; CPU iPhone OS 14_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0 Mobile/15E148 Safari/604.1",
-    "Mozilla/5.0 (Linux; Android 10; SM-G975F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.120 Mobile Safari/537.36"
-]
 
 class InstagramVideoDownloader:
     def __init__(self):
@@ -87,170 +13,175 @@ class InstagramVideoDownloader:
             post_metadata_txt_pattern="",
             compress_json=False
         )
-        self.delay_between_downloads = 5
-        self.set_random_user_agent()
-        
-    def set_random_user_agent(self):
-        user_agent = random.choice(USER_AGENTS)
-        self.L.context._session.headers.update({'User-Agent': user_agent})
-        self.L.context._session.headers.update({'Referer': 'https://www.instagram.com/'})
-        self.L.context._session.headers.update({'Accept-Language': 'en-US,en;q=0.9'})
+        self.delay_between_downloads = 5  # seconds to avoid rate limiting
 
-    def download_single_post(self, url: str, folder: str = "downloads") -> dict:
+    def download_single_post(self, url: str, folder: str = "downloads") -> bool:
+        """Download video from a single Instagram post"""
         try:
             if not os.path.exists(folder):
                 os.makedirs(folder)
 
             shortcode = self._extract_shortcode(url)
             if not shortcode:
-                return {"status": "error", "message": "Invalid Instagram URL"}
+                return False
 
-            # Random delay before request
-            time.sleep(random.uniform(1, 3))
-            
-            # Set new user agent for each request
-            self.set_random_user_agent()
-            
             post = instaloader.Post.from_shortcode(self.L.context, shortcode)
-
+            
             if not post.is_video:
-                return {"status": "error", "message": "This post doesn't contain a video"}
+                print(f"⚠️ The post {url} doesn't contain a video. Skipping...")
+                return False
 
             self.L.dirname_pattern = folder
             self.L.download_post(post, target=folder)
-
-            return {
-                "status": "success",
-                "caption": post.caption[:100] + "..." if post.caption else "No caption",
-                "date": str(post.date_utc),
-                "likes": post.likes,
-                "comments": post.comments,
-                "username": post.owner_username,
-                "media": post.url
-            }
+            
+            print(f"\n✅ Video downloaded successfully to {folder}/")
+            print(f"📌 Caption: {post.caption[:50]}..." if post.caption else "No caption")
+            print(f"📅 Date: {post.date_utc}")
+            print(f"❤️ Likes: {post.likes}")
+            print(f"💬 Comments: {post.comments}")
+            return True
 
         except Exception as e:
-            error_msg = str(e)
-            if "429" in error_msg or "Please wait" in error_msg:
-                return {"status": "error", "message": "Instagram is rate limiting us. Please wait 5-10 minutes and try again."}
-            elif "login_required" in error_msg:
-                return {"status": "error", "message": "This post might be private or unavailable."}
-            else:
-                return {"status": "error", "message": error_msg}
+            print(f"❌ Error downloading post {url}: {str(e)}")
+            return False
+
+    def download_bulk_posts(self, urls: list, folder: str = "downloads") -> dict:
+        """Download multiple Instagram posts from a list of URLs"""
+        results = {
+            'success': 0,
+            'failed': 0,
+            'skipped': 0,
+            'total': len(urls)
+        }
+        
+        print(f"\n⏳ Starting bulk download of {len(urls)} posts...\n")
+        
+        for i, url in enumerate(urls, 1):
+            url = url.strip()
+            if not url:
+                continue
+                
+            print(f"\n📥 Processing {i}/{len(urls)}: {url}")
+            
+            try:
+                if self.download_single_post(url, folder):
+                    results['success'] += 1
+                else:
+                    results['skipped'] += 1
+            except Exception as e:
+                print(f"❌ Unexpected error with {url}: {str(e)}")
+                results['failed'] += 1
+            
+            # Add delay between downloads to avoid rate limiting
+            if i < len(urls):
+                print(f"\n⏳ Waiting {self.delay_between_downloads} seconds before next download...")
+                time.sleep(self.delay_between_downloads)
+        
+        print("\n" + "="*50)
+        print(f"📊 Download Summary:")
+        print(f"✅ Success: {results['success']}")
+        print(f"⚠️ Skipped: {results['skipped']}")
+        print(f"❌ Failed: {results['failed']}")
+        print(f"📂 Saved to: {os.path.abspath(folder)}")
+        print("="*50)
+        
+        return results
 
     def _extract_shortcode(self, url: str) -> str:
+        """Extract shortcode from Instagram URL"""
         try:
             parsed_url = urlparse(url)
             path_parts = parsed_url.path.strip("/").split("/")
+            
             if len(path_parts) >= 2 and path_parts[0] in ["p", "reel", "tv"]:
                 return path_parts[1]
+            
+            print(f"❌ Invalid Instagram URL format: {url}")
             return None
-        except:
+        except Exception as e:
+            print(f"❌ Could not parse URL {url}: {str(e)}")
             return None
 
-# App Header
-st.markdown("""
-<div class="header-container">
-    <div class="header-icon">📥</div>
-    <div>
-        <h1 style="margin: 0;">Instagram Video Downloader</h1>
-        <p style="margin: 0; color: #6c757d;">Download videos from public Instagram posts</p>
-    </div>
-</div>
-""", unsafe_allow_html=True)
-
-# Main Form
-with st.form("download_form"):
-    url_input = st.text_input(
-        "Instagram Post URL",
-        placeholder="https://www.instagram.com/reel/...",
-        help="Paste the URL of a public Instagram post (Reel, TV, or regular video post)"
-    )
+def get_bulk_links_from_input():
+    """Get multiple links from user input"""
+    print("\n" + "="*50)
+    print("📋 Paste multiple Instagram links (one per line)")
+    print("Press Enter twice when finished")
+    print("="*50 + "\n")
     
-    col1, col2 = st.columns(2)
-    with col1:
-        folder_name = st.text_input(
-            "Save to folder",
-            value="instagram_videos",
-            help="Folder where videos will be saved"
-        )
-    with col2:
-        delay_time = st.slider(
-            "Download delay (seconds)",
-            1, 10, 3,
-            help="Delay between download attempts to avoid rate limiting"
-        )
+    links = []
+    while True:
+        try:
+            line = input()
+            if line.strip() == "":
+                if len(links) > 0:
+                    break
+                else:
+                    continue
+            if "instagram.com" in line:
+                links.append(line.strip())
+            else:
+                print(f"⚠️ Skipping non-Instagram link: {line}")
+        except EOFError:
+            break
     
-    submit_button = st.form_submit_button("Download Video")
+    return links
 
-# Download Logic
-if submit_button:
-    if not url_input.strip():
-        st.error("Please enter a valid Instagram URL.")
+def main():
+    print("\n" + "="*50)
+    print("📱 INSTAGRAM BULK VIDEO DOWNLOADER".center(50))
+    print("="*50 + "\n")
+
+    parser = argparse.ArgumentParser(description='Download videos from public Instagram content')
+    parser.add_argument('--url', type=str, help='Single Instagram post URL to download')
+    parser.add_argument('--file', type=str, help='Text file containing multiple Instagram URLs (one per line)')
+    parser.add_argument('--folder', type=str, default="downloads", help='Download folder (default: downloads)')
+    parser.add_argument('--delay', type=int, default=5, help='Delay between downloads in seconds (default: 5)')
+    
+    args = parser.parse_args()
+
+    downloader = InstagramVideoDownloader()
+    downloader.delay_between_downloads = args.delay
+
+    if args.url:
+        # Single URL download
+        downloader.download_single_post(args.url, args.folder)
+    elif args.file:
+        # Bulk download from file
+        try:
+            with open(args.file, 'r') as f:
+                urls = [line.strip() for line in f if line.strip()]
+            downloader.download_bulk_posts(urls, args.folder)
+        except Exception as e:
+            print(f"❌ Error reading file: {str(e)}")
     else:
-        with st.spinner("Downloading video... Please wait"):
-            downloader = InstagramVideoDownloader()
-            downloader.delay_between_downloads = delay_time
-            result = downloader.download_single_post(url_input.strip(), folder_name.strip())
+        # Interactive mode
+        print("Choose download mode:")
+        print("1. Single post download")
+        print("2. Bulk download by pasting multiple links")
+        print("3. Bulk download from text file")
         
-        if result["status"] == "success":
-            st.markdown("""
-            <div class="success-box">
-                <h3 style="color: #28a745; margin-bottom: 15px;">✅ Download Complete!</h3>
-                <p><strong>Caption:</strong> {caption}</p>
-                <div class="stats-container">
-                    <div class="stat-box">
-                        <div>📅</div>
-                        <div><strong>Posted</strong></div>
-                        <div>{date}</div>
-                    </div>
-                    <div class="stat-box">
-                        <div>❤️</div>
-                        <div><strong>Likes</strong></div>
-                        <div>{likes:,}</div>
-                    </div>
-                    <div class="stat-box">
-                        <div>💬</div>
-                        <div><strong>Comments</strong></div>
-                        <div>{comments:,}</div>
-                    </div>
-                </div>
-                <p style="margin-top: 15px;"><strong>By:</strong> @{username}</p>
-            </div>
-            """.format(
-                caption=result["caption"],
-                date=result["date"].split()[0],
-                likes=result["likes"],
-                comments=result["comments"],
-                username=result["username"]
-            ), unsafe_allow_html=True)
-            
-            # Show success message
-            st.balloons()
-            
+        choice = input("\nEnter your choice (1-3): ")
+        
+        if choice == "1":
+            url = input("Enter Instagram post URL: ")
+            downloader.download_single_post(url, args.folder)
+        elif choice == "2":
+            urls = get_bulk_links_from_input()
+            if urls:
+                downloader.download_bulk_posts(urls, args.folder)
+            else:
+                print("❌ No valid Instagram links provided")
+        elif choice == "3":
+            file_path = input("Enter path to text file containing URLs: ")
+            try:
+                with open(file_path, 'r') as f:
+                    urls = [line.strip() for line in f if line.strip()]
+                downloader.download_bulk_posts(urls, args.folder)
+            except Exception as e:
+                print(f"❌ Error reading file: {str(e)}")
         else:
-            st.markdown("""
-            <div class="error-box">
-                <h3 style="color: #dc3545; margin-bottom: 15px;">❌ Download Failed</h3>
-                <p>{message}</p>
-                <p class="info-text">Please check the URL and try again. Make sure the post is public.</p>
-            </div>
-            """.format(message=result["message"]), unsafe_allow_html=True)
+            print("Invalid choice")
 
-# Information Section
-st.markdown("---")
-st.markdown("### How to use:")
-st.markdown("""
-1. Copy the URL of a public Instagram video (Reel, TV, or regular post)
-2. Paste it in the input field above
-3. Click "Download Video"
-4. Wait for the download to complete
-""")
-
-st.markdown("### Notes:")
-st.markdown("""
-- Only works with public Instagram accounts
-- Videos are saved in the specified folder
-- If you get rate limited, please wait 5-10 minutes before trying again
-- Respect Instagram's terms of service
-""")
+if __name__ == "__main__":
+    main()
