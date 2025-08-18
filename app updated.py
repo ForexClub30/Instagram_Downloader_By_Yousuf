@@ -3,7 +3,6 @@ import instaloader
 import os
 from urllib.parse import urlparse
 import time
-from PIL import Image
 
 # Custom CSS for better styling
 st.markdown("""
@@ -55,6 +54,15 @@ st.markdown("""
         box-shadow: 0 2px 4px rgba(0,0,0,0.05);
         flex: 1;
         margin: 0 5px;
+    }
+    .header-container {
+        display: flex;
+        align-items: center;
+        margin-bottom: 20px;
+    }
+    .header-icon {
+        font-size: 2.5rem;
+        margin-right: 15px;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -111,13 +119,15 @@ class InstagramVideoDownloader:
             return None
 
 # App Header
-col1, col2 = st.columns([1, 4])
-with col1:
-    st.image(Image.open("instagram.png"), width=80)  # Replace with your own icon or use emoji
-with col2:
-    st.title("Instagram Video Downloader")
-
-st.markdown("Download videos from public Instagram posts with ease.")
+st.markdown("""
+<div class="header-container">
+    <div class="header-icon">📥</div>
+    <div>
+        <h1 style="margin: 0;">Instagram Video Downloader</h1>
+        <p style="margin: 0; color: #6c757d;">Download videos from public Instagram posts</p>
+    </div>
+</div>
+""", unsafe_allow_html=True)
 
 # Main Form
 with st.form("download_form"):
