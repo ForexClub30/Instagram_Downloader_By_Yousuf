@@ -126,4 +126,11 @@ def start_bot():
             time.sleep(10)  # Wait before restarting
 
 if __name__ == "__main__":
-    start_bot()
+    print("🚀 Starting Instagram Video Downloader Bot")
+    while True:
+        try:
+            bot.polling(none_stop=True, interval=3, timeout=30)
+        except Exception as e:
+            print(f"⚠️ Error: {e}")
+            print("🔄 Restarting bot in 10 seconds...")
+            time.sleep(10)
