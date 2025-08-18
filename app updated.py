@@ -1,6 +1,7 @@
 import streamlit as st
 import instaloader
 import os
+import random
 from urllib.parse import urlparse
 import time
 
@@ -67,6 +68,16 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
+# List of user agents to rotate
+USER_AGENTS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:89.0) Gecko/20100101 Firefox/89.0",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.1 Safari/605.1.15",
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 14_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0 Mobile/15E148 Safari/604.1",
+    "Mozilla/5.0 (Linux; Android 10; SM-G975F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.120 Mobile Safari/537.36"
+]
+
 class InstagramVideoDownloader:
     def __init__(self):
         self.L = instaloader.Instaloader(
@@ -77,6 +88,13 @@ class InstagramVideoDownloader:
             compress_json=False
         )
         self.delay_between_downloads = 5
+        self.set_random_user_agent()
+        
+    def set_random_user_agent(self):
+        user_agent = random.choice(USER_AGENTS)
+        self.L.context._session.headers.update({'User-Agent': user_agent})
+        self.L.context._session.headers.update({'Referer': 'https://www.instagram.com/'})
+        self.L.context._session.headers.update({'Accept-Language': 'en-US,en;q=0.9'})
 
     def download_single_post(self, url: str, folder: str = "downloads") -> dict:
         try:
@@ -87,6 +105,12 @@ class InstagramVideoDownloader:
             if not shortcode:
                 return {"status": "error", "message": "Invalid Instagram URL"}
 
+            # Random delay before request
+            time.sleep(random.uniform(1, 3))
+            
+            # Set new user agent for each request
+            self.set_random_user_agent()
+            
             post = instaloader.Post.from_shortcode(self.L.context, shortcode)
 
             if not post.is_video:
@@ -106,7 +130,13 @@ class InstagramVideoDownloader:
             }
 
         except Exception as e:
-            return {"status": "error", "message": str(e)}
+            error_msg = str(e)
+            if "429" in error_msg or "Please wait" in error_msg:
+                return {"status": "error", "message": "Instagram is rate limiting us. Please wait 5-10 minutes and try again."}
+            elif "login_required" in error_msg:
+                return {"status": "error", "message": "This post might be private or unavailable."}
+            else:
+                return {"status": "error", "message": error_msg}
 
     def _extract_shortcode(self, url: str) -> str:
         try:
@@ -123,7 +153,7 @@ st.markdown("""
 <div class="header-container">
     <div class="header-icon">📥</div>
     <div>
-        <h1 style="margin: 0;">Instagram Video Downloader By Yousuf</h1>
+        <h1 style="margin: 0;">Instagram Video Downloader</h1>
         <p style="margin: 0; color: #6c757d;">Download videos from public Instagram posts</p>
     </div>
 </div>
@@ -147,7 +177,7 @@ with st.form("download_form"):
     with col2:
         delay_time = st.slider(
             "Download delay (seconds)",
-            1, 10, 2,
+            1, 10, 3,
             help="Delay between download attempts to avoid rate limiting"
         )
     
@@ -221,6 +251,6 @@ st.markdown("### Notes:")
 st.markdown("""
 - Only works with public Instagram accounts
 - Videos are saved in the specified folder
+- If you get rate limited, please wait 5-10 minutes before trying again
 - Respect Instagram's terms of service
 """)
-
