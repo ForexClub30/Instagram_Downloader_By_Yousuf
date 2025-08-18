@@ -1,58 +1,46 @@
 import streamlit as st
-import requests
-import re
-from bs4 import BeautifulSoup
+import instaloader
+import time
 
-st.set_page_config(page_title="Instagram Downloader", page_icon="📸", layout="centered")
+st.set_page_config(page_title="Instagram Downloader by Yousuf", page_icon="📸", layout="centered")
 
-st.title("📸 Instagram Downloader by Yousuf")
+st.title("📸 Instagram Post Downloader")
+st.write("Download Instagram photos/videos by entering the post URL.")
 
-url = st.text_input("Paste Instagram Post/Reel URL:")
+# Input
+url = st.text_input("Enter Instagram Post URL", placeholder="https://www.instagram.com/p/SHORTCODE/")
 
-def get_instagram_data(url):
-    try:
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
-        }
-        r = requests.get(url, headers=headers, timeout=10)
-        if r.status_code != 200:
-            return None, None, None
+# Login credentials (for private / rate-limit handling)
+username = st.text_input("Instagram Username (optional)")
+password = st.text_input("Instagram Password (optional)", type="password")
 
-        soup = BeautifulSoup(r.text, "html.parser")
-
-        # Title
-        title_tag = soup.find("meta", property="og:title")
-        title = title_tag["content"] if title_tag else "Instagram Post"
-
-        # Thumbnail
-        thumb_tag = soup.find("meta", property="og:image")
-        thumbnail = thumb_tag["content"] if thumb_tag else None
-
-        # Video or Image
-        video_tag = soup.find("meta", property="og:video")
-        if video_tag:
-            media_url = video_tag["content"]
-        else:
-            media_url = thumbnail
-
-        return title, thumbnail, media_url
-    except Exception as e:
-        return None, None, None
-
-if st.button("Fetch Post"):
-    if url:
-        title, thumbnail, media_url = get_instagram_data(url)
-        if media_url:
-            st.success("✅ Post Fetched Successfully!")
-            st.write(f"**Title:** {title}")
-
-            if media_url.endswith(".mp4"):
-                st.video(media_url)
-                st.download_button("⬇ Download Video", media_url)
-            else:
-                st.image(media_url, use_container_width=True)
-                st.download_button("⬇ Download Image", media_url)
-        else:
-            st.error("❌ Failed to fetch media. Try another link.")
+if st.button("Download"):
+    if not url:
+        st.error("⚠️ Please enter a valid Instagram URL.")
     else:
-        st.warning("⚠️ Please enter a valid Instagram URL.")
+        loader = instaloader.Instaloader(download_videos=True, download_video_thumbnails=False, save_metadata=False)
+        try:
+            # Login if provided
+            if username and password:
+                st.info("🔑 Logging in...")
+                loader.login(username, password)
+
+            shortcode = url.split("/")[-2]
+            post = instaloader.Post.from_shortcode(loader.context, shortcode)
+
+            st.success("✅ Post fetched successfully!")
+
+            if post.is_video:
+                st.video(post.video_url)
+                st.write("🎥 [Download Video](" + post.video_url + ")")
+            else:
+                st.image(post.url)
+                st.write("🖼️ [Download Image](" + post.url + ")")
+
+        except instaloader.exceptions.ConnectionException as e:
+            st.error("🚫 Instagram blocked the request. Please wait a few minutes or login with credentials.")
+            st.write(f"**Error details:** {str(e)}")
+
+        except Exception as e:
+            st.error("⚠️ Something went wrong.")
+            st.write(f"**Error details:** {str(e)}")
